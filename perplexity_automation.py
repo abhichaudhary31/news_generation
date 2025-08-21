@@ -8,6 +8,8 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException, NoSuchElementException
+from selenium_stealth import stealth
+import undetected_chromedriver as uc
 
 # --- CONFIGURATION ---
 GOOGLE_EMAIL = "chaudharyabhishek031@gmail.com"
@@ -142,8 +144,8 @@ def get_prompt_from_scene_generator():
 
 @retry_on_failure(max_attempts=3, delay=2)
 def setup_chrome_driver():
-    """Setup Chrome driver with session saving and download preferences"""
-    print("🚀 Setting up Chrome WebDriver...")
+    """Setup Chrome driver with enhanced anti-detection and session saving"""
+    print("🚀 Setting up Chrome WebDriver with anti-detection measures...")
     
     # Ensure directories exist
     try:
@@ -153,19 +155,30 @@ def setup_chrome_driver():
     except Exception as e:
         print(f"⚠️ Directory creation warning: {e}")
     
-    options = webdriver.ChromeOptions()
+    options = uc.ChromeOptions()
     
-    # Session saving and automation detection avoidance
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
-    options.add_argument("--disable-blink-features=AutomationControlled")
+    # Essential options for undetected-chromedriver
     options.add_argument(f"--user-data-dir={USER_DATA_DIR}")
     
-    # Additional stability options
+    # Download and file handling
+    options.add_argument("--disable-web-security")
+    options.add_argument("--allow-running-insecure-content")
+    options.add_argument("--disable-notifications")
+    options.add_argument("--disable-popup-blocking")
+    
+    # Performance and stability
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("--remote-debugging-port=9222")
+    
+    # Window settings
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--start-maximized")
+    
+    # Additional stealth options (undetected-chromedriver handles most automatically)
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
     
     # Download preferences
     prefs = {
@@ -178,19 +191,47 @@ def setup_chrome_driver():
         "profile.default_content_setting_values.automatic_downloads": 1,
         "profile.content_settings.exceptions.automatic_downloads.*.setting": 1,
         "profile.content_settings.exceptions.insecure_content.*.setting": 1,
-        "profile.managed_default_content_settings.images": 1
+        "profile.managed_default_content_settings.images": 1,
+        
+        # Additional stealth preferences
+        "profile.default_content_setting_values.notifications": 2,
+        "profile.default_content_settings.popups": 0,
+        "profile.managed_default_content_settings.images": 1,
+        "profile.content_settings.plugin_whitelist.adobe-flash-player": 1,
+        "profile.content_settings.exceptions.plugins.*.setting": 1,
+        "profile.default_content_setting_values.plugins": 1,
+        "profile.content_settings.pattern_pairs.*.setting": 1,
+        
+        # Language and locale settings to appear more natural
+        "intl.accept_languages": "en-US,en;q=0.9",
+        "profile.default_content_setting_values.geolocation": 2
     }
     options.add_experimental_option("prefs", prefs)
-    
-    # Additional download-related options
-    options.add_argument("--disable-web-security")
-    options.add_argument("--allow-running-insecure-content")
     
     print(f"📁 Download directory set to: {DOWNLOAD_DIR}")
     
     try:
-        driver = webdriver.Chrome(options=options)
-        print("✅ Chrome WebDriver initialized successfully")
+        # Create undetected Chrome driver with enhanced stealth
+        driver = uc.Chrome(
+            options=options,
+            user_data_dir=USER_DATA_DIR,
+            use_subprocess=True,
+            version_main=None,  # Auto-detect Chrome version
+        )
+        print("✅ Undetected Chrome WebDriver initialized successfully")
+        
+        # Apply selenium-stealth for maximum anti-detection
+        stealth(driver,
+                languages=["en-US", "en"],
+                vendor="Google Inc.",
+                platform="MacIntel",
+                webgl_vendor="Intel Inc.",
+                renderer="Intel Iris OpenGL Engine",
+                fix_hairline=True,
+                )
+        
+        print("🕵️ Selenium-stealth activated - advanced anti-detection applied")
+        print("🛡️ Undetected-chromedriver + selenium-stealth = Maximum stealth mode")
         
         # Verify driver is working and download settings
         driver.execute_script("return navigator.userAgent;")
@@ -210,6 +251,118 @@ def setup_chrome_driver():
     except Exception as e:
         print(f"❌ Chrome WebDriver initialization failed: {e}")
         raise
+
+def check_for_cloudflare_challenge(driver):
+    """Check if Cloudflare is challenging us and wait if needed"""
+    print("🔍 Checking for Cloudflare challenge...")
+    
+    try:
+        # Common Cloudflare challenge indicators
+        cloudflare_indicators = [
+            "Checking your browser before accessing",
+            "Please wait while we check your browser",
+            "Verifying you are human",
+            "Just a moment while we check your browser",
+            "Please stand by, while we are checking your browser",
+            "cf-browser-verification",
+            "ray-id"
+        ]
+        
+        page_source = driver.page_source.lower()
+        page_title = driver.title.lower()
+        
+        for indicator in cloudflare_indicators:
+            if indicator.lower() in page_source or indicator.lower() in page_title:
+                print(f"🛡️ Cloudflare challenge detected: '{indicator}'")
+                print("⏳ Waiting for Cloudflare challenge to complete...")
+                
+                # Wait for challenge to complete (up to 30 seconds)
+                for i in range(30):
+                    time.sleep(1)
+                    try:
+                        current_source = driver.page_source.lower()
+                        current_title = driver.title.lower()
+                        
+                        # Check if challenge is completed
+                        challenge_completed = True
+                        for check_indicator in cloudflare_indicators:
+                            if check_indicator.lower() in current_source or check_indicator.lower() in current_title:
+                                challenge_completed = False
+                                break
+                        
+                        if challenge_completed and "perplexity" in current_title:
+                            print("✅ Cloudflare challenge completed successfully")
+                            return True
+                            
+                        if i % 5 == 0:  # Show progress every 5 seconds
+                            print(f"⏳ Still waiting for challenge completion... ({i+1}/30s)")
+                            
+                    except Exception as e:
+                        print(f"⚠️ Error checking challenge status: {e}")
+                        continue
+                
+                print("⚠️ Cloudflare challenge timeout - proceeding anyway")
+                return False
+        
+        print("✅ No Cloudflare challenge detected")
+        return True
+        
+    except Exception as e:
+        print(f"⚠️ Error checking for Cloudflare: {e}")
+        return True
+
+def add_human_like_behavior(driver):
+    """Add human-like mouse movements and delays"""
+    try:
+        # Scroll slightly to mimic human behavior
+        driver.execute_script("window.scrollTo(0, 100);")
+        time.sleep(0.5)
+        driver.execute_script("window.scrollTo(0, 0);")
+        time.sleep(0.3)
+        
+        # Move mouse to a random position
+        driver.execute_script("""
+            var event = new MouseEvent('mousemove', {
+                'view': window,
+                'bubbles': true,
+                'cancelable': true,
+                'clientX': Math.floor(Math.random() * window.innerWidth),
+                'clientY': Math.floor(Math.random() * window.innerHeight)
+            });
+            document.dispatchEvent(event);
+        """)
+        
+        # Small random delay
+        time.sleep(0.2 + (0.3 * os.urandom(1)[0] / 255))
+        
+    except Exception as e:
+        print(f"⚠️ Error adding human-like behavior: {e}")
+
+def human_like_typing(element, text, typing_speed=0.05):
+    """Type text in a human-like manner with random delays"""
+    try:
+        element.clear()
+        time.sleep(0.3)
+        
+        for char in text:
+            element.send_keys(char)
+            # Random delay between keystrokes (0.02 to 0.1 seconds)
+            delay = typing_speed + (0.05 * os.urandom(1)[0] / 255)
+            time.sleep(delay)
+            
+        print(f"✅ Human-like typing completed: {len(text)} characters")
+        return True
+        
+    except Exception as e:
+        print(f"⚠️ Human-like typing failed: {e}")
+        # Fallback to normal typing
+        try:
+            element.clear()
+            time.sleep(0.5)
+            element.send_keys(text)
+            return True
+        except:
+            return False
 
 @retry_on_failure(max_attempts=2, delay=3)
 def handle_google_login(driver, wait):
@@ -268,6 +421,202 @@ def handle_google_login(driver, wait):
         print("✅ Already logged in or no login required")
 
 @retry_on_failure(max_attempts=3, delay=2)
+def navigate_to_image_generation(driver, wait):
+    """Navigate through Generate Image -> Battle -> Direct Chat flow"""
+    print("🎯 Starting navigation to image generation...")
+    
+    try:
+        # Step 1: Look for "Generate Image" button
+        print("🔍 Looking for 'Generate Image' button...")
+        generate_image_selectors = [
+            "//button[contains(text(), 'Generate Image')]",
+            "//a[contains(text(), 'Generate Image')]", 
+            "//div[contains(text(), 'Generate Image')]",
+            "//*[contains(text(), 'Generate Image')]",
+            "//button[contains(@aria-label, 'Generate Image')]",
+            "//button[contains(@title, 'Generate Image')]"
+        ]
+        
+        generate_image_button = None
+        for selector in generate_image_selectors:
+            try:
+                generate_image_button = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, selector))
+                )
+                print(f"✅ Found 'Generate Image' button using: {selector}")
+                break
+            except TimeoutException:
+                continue
+        
+        if not generate_image_button:
+            print("❌ Could not find 'Generate Image' button")
+            return False
+        
+        # Click Generate Image button
+        print("🖱️ Clicking 'Generate Image' button...")
+        add_human_like_behavior(driver)
+        time.sleep(1.2)  # Human-like delay before click
+        generate_image_button.click()
+        time.sleep(3)  # Wait for page transition
+        
+        # Step 2: Look for "Battle" button
+        print("🔍 Looking for 'Battle' button...")
+        add_human_like_behavior(driver)
+        time.sleep(2)  # Human-like delay
+        battle_selectors = [
+            "//button[contains(text(), 'Battle')]",
+            "//a[contains(text(), 'Battle')]",
+            "//div[contains(text(), 'Battle')]", 
+            "//*[contains(text(), 'Battle')]",
+            "//button[contains(@aria-label, 'Battle')]",
+            "//button[contains(@title, 'Battle')]"
+        ]
+        
+        battle_button = None
+        for selector in battle_selectors:
+            try:
+                battle_button = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, selector))
+                )
+                print(f"✅ Found 'Battle' button using: {selector}")
+                break
+            except TimeoutException:
+                continue
+        
+        if not battle_button:
+            print("❌ Could not find 'Battle' button")
+            return False
+        
+        # Click Battle button
+        print("🖱️ Clicking 'Battle' button...")
+        add_human_like_behavior(driver)
+        time.sleep(1.2)  # Human-like delay before click
+        battle_button.click()
+        time.sleep(3)  # Wait for dropdown to appear
+        
+        # Step 3: Look for "Direct Chat" option in dropdown
+        print("🔍 Looking for 'Direct Chat' option in dropdown...")
+        add_human_like_behavior(driver)
+        time.sleep(2)  # Human-like delay
+        direct_chat_selectors = [
+            "//option[contains(text(), 'Direct Chat')]",
+            "//li[contains(text(), 'Direct Chat')]",
+            "//div[contains(text(), 'Direct Chat')]",
+            "//*[contains(text(), 'Direct Chat')]",
+            "//a[contains(text(), 'Direct Chat')]",
+            "//button[contains(text(), 'Direct Chat')]"
+        ]
+        
+        direct_chat_option = None
+        for selector in direct_chat_selectors:
+            try:
+                direct_chat_option = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, selector))
+                )
+                print(f"✅ Found 'Direct Chat' option using: {selector}")
+                break
+            except TimeoutException:
+                continue
+        
+        if not direct_chat_option:
+            print("❌ Could not find 'Direct Chat' option")
+            return False
+        
+        # Click Direct Chat option
+        print("🖱️ Selecting 'Direct Chat' option...")
+        add_human_like_behavior(driver)
+        time.sleep(1.2)  # Human-like delay before click
+        direct_chat_option.click()
+        time.sleep(3)  # Wait for interface to load
+        
+        print("✅ Successfully selected 'Direct Chat'")
+        
+        # Step 4: Look for "flux" text and click it
+        print("🔍 Looking for 'flux' text...")
+        add_human_like_behavior(driver)
+        time.sleep(2)  # Human-like delay
+        
+        flux_selectors = [
+            "//button[contains(text(), 'flux')]",
+            "//div[contains(text(), 'flux')]",
+            "//span[contains(text(), 'flux')]",
+            "//a[contains(text(), 'flux')]",
+            "//*[contains(text(), 'flux')]",
+            "//button[contains(@aria-label, 'flux')]",
+            "//button[contains(@title, 'flux')]",
+            "//li[contains(text(), 'flux')]"
+        ]
+        
+        flux_element = None
+        for selector in flux_selectors:
+            try:
+                flux_element = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, selector))
+                )
+                print(f"✅ Found 'flux' element using: {selector}")
+                break
+            except TimeoutException:
+                continue
+        
+        if not flux_element:
+            print("❌ Could not find 'flux' element")
+            return False
+        
+        # Click flux element
+        print("🖱️ Clicking 'flux' element...")
+        add_human_like_behavior(driver)
+        time.sleep(1.5)  # Human-like delay before click
+        flux_element.click()
+        time.sleep(3)  # Wait for dropdown to appear
+        
+        # Step 5: Look for "imagen-4.0" option in dropdown
+        print("🔍 Looking for 'imagen-4.0' option in dropdown...")
+        add_human_like_behavior(driver)
+        time.sleep(2)  # Human-like delay
+        
+        imagen_selectors = [
+            "//option[contains(text(), 'imagen-4.0')]",
+            "//li[contains(text(), 'imagen-4.0')]",
+            "//div[contains(text(), 'imagen-4.0')]",
+            "//span[contains(text(), 'imagen-4.0')]",
+            "//a[contains(text(), 'imagen-4.0')]",
+            "//button[contains(text(), 'imagen-4.0')]",
+            "//*[contains(text(), 'imagen-4.0')]",
+            "//option[contains(text(), 'Imagen-4.0')]",  # Case variation
+            "//li[contains(text(), 'Imagen-4.0')]",
+            "//*[contains(text(), 'Imagen')]"  # Partial match
+        ]
+        
+        imagen_option = None
+        for selector in imagen_selectors:
+            try:
+                imagen_option = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, selector))
+                )
+                print(f"✅ Found 'imagen-4.0' option using: {selector}")
+                break
+            except TimeoutException:
+                continue
+        
+        if not imagen_option:
+            print("❌ Could not find 'imagen-4.0' option")
+            return False
+        
+        # Click imagen-4.0 option
+        print("🖱️ Selecting 'imagen-4.0' option...")
+        add_human_like_behavior(driver)
+        time.sleep(1.5)  # Human-like delay before click
+        imagen_option.click()
+        time.sleep(3)  # Wait for selection to complete
+        
+        print("✅ Successfully navigated through Generate Image -> Battle -> Direct Chat -> flux -> imagen-4.0")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error during navigation: {str(e)}")
+        return False
+
+
 def find_and_fill_prompt(driver, wait, prompt_text):
     """Find prompt input field and enter the text"""
     print("🔍 Looking for prompt input field...")
@@ -300,12 +649,21 @@ def find_and_fill_prompt(driver, wait, prompt_text):
             )
             print(f"✅ Found prompt input using selector: {selector}")
             
-            # Clear and enter the prompt
+            # Clear and enter the prompt with human-like typing
             try:
-                prompt_input.clear()
-                time.sleep(0.5)  # Small delay after clear
-                prompt_input.send_keys(prompt_text)
-                print("✅ Prompt entered successfully")
+                print("⌨️ Using human-like typing for prompt entry...")
+                if human_like_typing(prompt_input, prompt_text, typing_speed=0.02):
+                    print("✅ Prompt entered successfully with human-like typing")
+                else:
+                    # Fallback to regular typing
+                    print("⚠️ Falling back to regular typing...")
+                    prompt_input.clear()
+                    time.sleep(0.5)
+                    prompt_input.send_keys(prompt_text)
+                    print("✅ Prompt entered successfully")
+                
+                # Add a short pause before verification
+                time.sleep(1)
                 
                 # Verify text was entered
                 if hasattr(prompt_input, 'value') and prompt_input.get_attribute('value'):
@@ -322,6 +680,10 @@ def find_and_fill_prompt(driver, wait, prompt_text):
                     print("⚠️ Text verification failed, trying JavaScript input...")
                     driver.execute_script("arguments[0].value = arguments[1];", prompt_input, prompt_text)
                     time.sleep(0.5)
+                
+                # Add human-like behavior before submitting
+                add_human_like_behavior(driver)
+                time.sleep(0.5)
                 
                 # Submit the prompt
                 prompt_input.send_keys(Keys.RETURN)
@@ -550,6 +912,13 @@ def main():
             print("⏳ Waiting 10 seconds for page to load...")
             time.sleep(10)
             
+            # Check for Cloudflare challenge
+            if not check_for_cloudflare_challenge(driver):
+                print("⚠️ Cloudflare challenge may not have completed properly")
+            
+            # Add human-like behavior
+            add_human_like_behavior(driver)
+            
             # Handle login if needed
             handle_google_login(driver, wait)
             
@@ -559,6 +928,18 @@ def main():
                 driver.get("https://www.perplexity.ai/")
                 print("⏳ Waiting 10 seconds after redirect...")
                 time.sleep(10)
+                
+                # Check for Cloudflare again after redirect
+                if not check_for_cloudflare_challenge(driver):
+                    print("⚠️ Cloudflare challenge may not have completed after redirect")
+                
+                # Add human-like behavior again
+                add_human_like_behavior(driver)
+            
+            # Navigate through Generate Image -> Battle -> Direct Chat flow
+            if not navigate_to_image_generation(driver, wait):
+                print("❌ Failed to navigate to image generation interface")
+                return False
             
             # Find and fill prompt
             if find_and_fill_prompt(driver, wait, prompt_text):
